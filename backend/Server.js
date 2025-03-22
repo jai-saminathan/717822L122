@@ -1,30 +1,54 @@
-const express = require("express");
-const cors = require("cors");
-const app = express();
-app.use(cors());
-let numbers = [];
-const windowSize = 10;
+import express from "express";
+import cors from "cors";
+import axios from "axios";
 
-app.get("/numbers",(req,res)=>{
-  const newNumber = Math.floor(Math.random() * 15) * 2 + 2;
-  numbers.push(newNumber);
-  if (numbers.length > windowSize) {
-    numbers.shift();
+const app=express();
+const PORT=4000;
+const WINDOW_SIZE=10;
+const numberStore=[];
+
+const API_URLS = {
+  p: "http://20.244.56.144/numbers/primes",
+  f: "http://20.244.56.144/numbers/fibonacci",
+  e: "http://20.244.56.144/numbers/even",
+  r: "http://20.244.56.144/numbers/random"
+};
+app.use(cors()); 
+const fetchNumbers = async (numberid)=>{
+  if (!API_URLS[numberid]) return [];
+  try {
+    const controller = new AbortController();
+    const timeout=setTimeout(()=>controller.abort(), 500); 
+    const response=await axios.get(API_URLS[numberid],{signal:controller.signal });
+    clearTimeout(timeout);
+    return response.data.numbers || [];
+  } catch (error) {
+    console.error("Error fetching numbers:");
+    return [];
   }
-  const midIndex = Math.floor(numbers.length / 2);
-  const windowPrevState = numbers.slice(0, midIndex);
-  const windowCurrState = numbers.slice(midIndex);
-  const avg = (numbers.reduce((sum, num) => sum + num, 0) / numbers.length).toFixed(2);
+};
+const updateNumbers=(newNumbers) => {
+  newNumbers.forEach(num=>{
+    if (!numberStore.includes(num)) {
+      numberStore.push(num);
+      if (numberStore.length>WINDOW_SIZE)numberStore.shift();
+    }
+  });
+};
+app.get("/numbers/:numberid", async(req,res)=>{
+  const{numberid}=req.params;
+  if (!["p","f","e","r"].includes(numberid)) {
+    return res.status(400).json({error: "Invalid number ID"});
+  }
+  const newNumbers=await fetchNumbers(numberid);
+  updateNumbers(newNumbers);
+  const average=numberStore.length
+    ? (numberStore.reduce((sum, num) => sum + num, 0) / numberStore.length).toFixed(2)
+    : 0;
   res.json({
-    windowPrevState,
-    windowCurrState,
-    numbers,
-    avg: parseFloat(avg),
+    numbers: numberStore,
+    average: parseFloat(average)
   });
 });
 
-const PORT = 4000;
-app.listen(PORT,()=>{
-  console.log(`Server running on http://localhost:${PORT}`);
-});
-
+app.listen(PORT, ()=>console.log(`Server running on http://localhost:${PORT}`));
